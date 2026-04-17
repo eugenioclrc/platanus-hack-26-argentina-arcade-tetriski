@@ -979,18 +979,26 @@ function soloBg(s, th, lv, time) {
   const glow = s.glow;
   const bp = s.beatPhase;
   const fl = Math.min(1, s.flash);
+  const warp = 1 + (s.warpT / 500) * 2.5;
+  const t = time * warp;
+  const k = s.swapT > 0 ? (th.k + 2) & 3 : th.k;
 
   bg.fillStyle(th.bg, 1);
   bg.fillRect(0, 0, W, H);
 
-  if (!th.k) fxPlasma(bg, th, time, bp, fl);
-  else if (th.k === 1) fxCopper(bg, th, time, bp, fl);
-  else if (th.k === 2) fxSunburst(bg, th, time, bp, fl);
-  else fxTunnel(bg, th, time, bp, fl);
+  if (!k) fxPlasma(bg, th, t, bp, fl);
+  else if (k === 1) fxCopper(bg, th, t, bp, fl);
+  else if (k === 2) fxSunburst(bg, th, t, bp, fl);
+  else fxTunnel(bg, th, t, bp, fl);
 
   for (const d of s.dust) {
     glow.fillStyle(th.dust, 0.03 + d.s * 0.02 + s.pulse * 0.01);
     glow.fillCircle(d.x, d.y, d.s + th.k * 0.4);
+  }
+
+  if (s.beatStrong > 0) {
+    glow.fillStyle(th.frame, s.beatStrong * 0.1);
+    glow.fillRect(0, 0, W, H);
   }
 }
 
