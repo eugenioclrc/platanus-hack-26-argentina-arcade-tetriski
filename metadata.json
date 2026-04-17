@@ -1,5 +1,5 @@
 {
-  "game_name": "<FILL THIS>",
-  "description": "<FILL THIS>",
+  "game_name": "Tetriski",
+  "description": "Neon falling-block arcade with RESONANCE: charge the meter, enter slow-mo, defer line clears, then unleash a cascade of compounded score and garbage. Solo and local versus.",
   "player_mode": "two_player"
 }
