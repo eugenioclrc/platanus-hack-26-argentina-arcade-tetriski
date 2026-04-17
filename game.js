@@ -1690,6 +1690,14 @@ function mSub(s, c, P) {
   tone(s, c, f, f, 0.14, 0.09, 'sine');
 }
 
+function mChord(s, c, P) {
+  const base = 440 * Math.pow(2, (P[0] - 69 + 12) / 12);
+  for (const semi of [0, 4, 7]) {
+    const f = base * Math.pow(2, semi / 12);
+    tone(s, c, f, f, 0.32, 0.045, 'triangle');
+  }
+}
+
 function mStep(s, c, P, st) {
   const f = 440 * Math.pow(2, (P[0] - 69) / 12);
   const bit = 1 << st;
