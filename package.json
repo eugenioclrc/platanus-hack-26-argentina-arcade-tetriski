@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 3001",
-    "check-restrictions": "arcade-check-restrictions"
+    "check-restrictions": "arcade-check-restrictions",
+    "build:pages": "cp game.js docs/game.js && cp cover.png docs/cover.png",
+    "deploy:pages": "npm run build:pages && git add docs/game.js docs/cover.png && git diff --cached --quiet || git commit -m 'chore: update GitHub Pages build' && git push"
   },
   "devDependencies": {
     "@platanus/arcade-dev-ui-26": "latest",
