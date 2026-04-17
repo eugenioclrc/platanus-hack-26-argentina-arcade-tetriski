@@ -216,7 +216,6 @@ function create() {
   s.beatFlip = 0;
   s.beatPhase = 0;
   s.lastBeat = 0;
-  s.musicStep = 0;
   s.particles = [];
   s.rings = [];
   s.trails = [];
@@ -249,14 +248,14 @@ function update(time, delta) {
     s.beatFlip = (s.beatFlip + 1) & 3;
     s.lastBeat = time;
     s.pulse += 0.06;
-    snd(s, s.beatFlip & 1 ? 'hat' : 'kick');
-    playMusic(s);
   }
   s.beatPhase = Math.max(0, 1 - (time - s.lastBeat) / 220);
 
   if (s.phase === 'menu') updateMenu(s);
   else if (s.phase === 'play') updatePlay(s, time, delta);
   else updateOver(s);
+
+  Music.tick(s, delta);
 
   s.title.setScale(1 + Math.sin(time * 0.004) * 0.015 + s.pulse * 0.02 + s.beatPhase * 0.04);
   syncUi(s);
@@ -286,6 +285,34 @@ function updatePlay(s, time, delta) {
     if (s.phase !== 'play') break;
     tickBoard(s, b, time, delta);
   }
+  s.boltT -= delta;
+  if (s.boltT <= 0) {
+    s.boltT = 700 + Math.random() * 2400;
+    bolt(s);
+  }
+  ambient(s, mxl(s), delta);
+}
+
+function bolt(s) {
+  if (!s.boards.length) return;
+  const b = s.boards[(Math.random() * s.boards.length) | 0];
+  const cells = [];
+  for (let y = VO; y < BH; y += 1) for (let x = 0; x < BW; x += 1) if (b.a[y][x]) cells.push([x, y]);
+  if (!cells.length) return;
+  const cell = cells[(Math.random() * cells.length) | 0];
+  const fx = b.x + (cell[0] + 0.5) * b.c;
+  const fy = b.y + (cell[1] - VO + 0.5) * b.c;
+  const th = s.mode === 1 ? theme(b.lv) : 0;
+  const col = th ? th.frame : 0x7be8ff;
+  s.trails.push({
+    beam: 1, x: fx, y: b.y - 24,
+    h: fy - (b.y - 24), w: b.c * 0.4, a: 1, c: 0xffffff, e: col, l: 360,
+    j: [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
+  });
+  ring(s, fx, fy, col, 10, 260, 2);
+  burst(s, fx, fy, col, 6, 120, 1);
+  s.flash += 0.1;
+  s.pulse += 0.08;
 }
 
 function updateOver(s) {
@@ -296,6 +323,7 @@ function updateOver(s) {
     s.bpm = 120;
     s.over1.setText('');
     s.over2.setText('');
+    Music.stopMusic(s);
   }
 }
 
@@ -305,6 +333,7 @@ function startGame(s, mode) {
   s.flash = 0.12;
   s.pulse = 0.6;
   s.bpm = 120;
+  s.boltT = 1200;
   s.particles = [];
   s.rings = [];
   s.trails = [];
@@ -323,6 +352,9 @@ function startGame(s, mode) {
     spawn(s, b, 1);
   }
   snd(s, 'start');
+  if (s.music) s.music.vol = 0.85;
+  Music.initAudio(s);
+  Music.startLevelMusic(s, 1);
 }
 
 function makeBoard(x, y, c, name, keys) {
@@ -421,7 +453,7 @@ function tickBoard(s, b, time, delta) {
 }
 
 function speed(b) {
-  return Math.max(70, 820 - (b.lv - 1) * 55);
+  return Math.max(50, 820 * Math.pow(0.82, b.lv - 1));
 }
 
 function move(b, dx, dy) {
@@ -535,6 +567,8 @@ function lockPiece(s, b) {
     b.lines += cleared.length;
     b.lv = 1 + ((b.lines / 10) | 0);
     if (s.mode === 1) s.bpm = 120 + Math.min(40, (b.lv - 1) * 6);
+    const mlv = s.boards.reduce((m, x) => x.lv > m ? x.lv : m, 1);
+    Music.startLevelMusic(s, mlv);
 
     const cx = b.x + BW * b.c * 0.5;
     const cy = b.y + (((cleared[0] + cleared[cleared.length - 1]) * 0.5 + 0.5) - VO) * b.c;
@@ -711,6 +745,7 @@ function lose(s, b) {
   s.pulse = 1.1;
   s.cameras.main.shake(220, 0.005);
   snd(s, 'over');
+  Music.setVolume(s, 0.22);
 
   if (s.mode === 1) {
     if (b.score > s.hi) {
@@ -743,30 +778,41 @@ function clearFx(s, b, x, y, n, c, rows) {
         x: b.x - 10, y: lineY - 2,
         w: boardW + 20, h: 4, a: 1, c: 0xffffff, l: 260,
       });
-      for (let k = 0; k < 14; k += 1) {
+      for (let cx = 0; cx < BW; cx += 1) {
+        s.trails.push({
+          beam: 1, x: b.x + (cx + 0.5) * b.c, y: b.y - 24,
+          h: lineY - (b.y - 24), w: b.c * 0.45, a: 0.9, c: 0xffffff, e: c, l: 360,
+          j: [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
+        });
+      }
+      for (let k = 0; k < 26; k += 1) {
         const a = Math.random() * Math.PI * 2;
-        const v = 260 * (0.4 + Math.random() * 1.2);
+        const v = 320 * (0.4 + Math.random() * 1.3);
         s.particles.push({
           x: b.x + Math.random() * boardW,
           y: lineY,
           vx: Math.cos(a) * v,
-          vy: Math.sin(a) * v - 160,
+          vy: Math.sin(a) * v - 220,
           g: 280 + Math.random() * 200,
           a: 1,
-          s: 2 + Math.random() * 3,
+          s: 2 + Math.random() * 4,
           c: Math.random() < 0.4 ? 0xffffff : c,
-          l: 520 + Math.random() * 260,
+          l: 520 + Math.random() * 320,
         });
       }
       ring(s, b.x + boardW * 0.5, lineY, c, 16, 260, 2);
+      ring(s, b.x + boardW * 0.5, lineY, 0xffffff, 8, 180, 3);
     }
   }
 
   ring(s, x, y, c, n === 4 ? 34 : 22, n === 4 ? 620 : 420, n === 4 ? 5 : 3);
   ring(s, x, y, 0xffffff, n === 4 ? 22 : 14, 320, 2);
   ring(s, x, y, c, n === 4 ? 50 : 34, n === 4 ? 760 : 520, 2);
-  burst(s, x, y, c, n === 4 ? 32 : 18, n === 4 ? 260 : 180, 1.1);
-  burst(s, x, y, 0xffffff, n === 4 ? 14 : 8, n === 4 ? 180 : 120, 1.4);
+  ring(s, x, y, c, n === 4 ? 70 : 46, n === 4 ? 920 : 640, 2);
+  ring(s, W * 0.5, H * 0.5, c, n === 4 ? 120 : 80, n === 4 ? 900 : 640, n === 4 ? 6 : 3);
+  ring(s, W * 0.5, H * 0.5, 0xffffff, n === 4 ? 80 : 50, n === 4 ? 620 : 420, 3);
+  burst(s, x, y, c, n === 4 ? 44 : 26, n === 4 ? 320 : 220, 1.2);
+  burst(s, x, y, 0xffffff, n === 4 ? 20 : 12, n === 4 ? 220 : 140, 1.5);
 
   if (n === 4) {
     s.trails.push({
@@ -777,9 +823,15 @@ function clearFx(s, b, x, y, n, c, rows) {
     });
   }
 
-  s.flash += n === 4 ? 0.4 : 0.18;
-  s.pulse += n === 4 ? 1.4 : 0.6;
-  s.cameras.main.shake(n === 4 ? 240 : 130, n === 4 ? 0.006 : 0.003);
+  s.flash += n === 4 ? 0.85 : 0.48;
+  s.flashC = c;
+  s.pulse += n === 4 ? 1.8 : 0.8;
+  s.cameras.main.shake(n === 4 ? 360 : 200, n === 4 ? 0.014 : 0.008);
+  if (n >= 2) swell(s);
+  const cam = s.cameras.main;
+  const zm = n === 4 ? 1.04 : 1.02;
+  cam.zoomTo(zm, 120);
+  s.time.delayedCall(140, () => cam.zoomTo(1, 260));
   snd(s, `c${n}`);
 }
 
@@ -863,74 +915,76 @@ function numText(n) {
   return n.toLocaleString('en-US');
 }
 
+function fxPlasma(bg, th, time, beat, flash) {
+  const t = time * 0.0006;
+  const amp = 1 + flash * 0.5;
+  for (let y = 0; y < H; y += 8) {
+    const s1 = Math.sin(y * 0.02 + t);
+    const s2 = Math.sin(y * 0.013 - t * 1.3 + beat * 2);
+    const c = s1 + s2 < 0 ? th.band[0] : th.band[1];
+    bg.fillStyle(c, (0.08 + Math.abs(s1 + s2) * 0.04) * amp);
+    bg.fillRect(0, y, W, 9);
+  }
+}
+
+function fxCopper(bg, th, time, beat, flash) {
+  const t = time * 0.0009;
+  const amp = 1 + flash * 0.7;
+  for (let i = 0; i < 5; i += 1) {
+    const y = H * 0.5 + Math.sin(t + i * 1.1) * H * 0.42;
+    const h = 36 + Math.sin(t * 2 + i) * 8 + beat * 14;
+    bg.fillStyle(i & 1 ? th.band[1] : th.frame, 0.1 * amp);
+    bg.fillRect(0, y - h * 0.5, W, h);
+    bg.fillStyle(th.dust, 0.18 * amp);
+    bg.fillRect(0, y - 2, W, 2);
+  }
+}
+
+function fxSunburst(bg, th, time, beat, flash) {
+  const cx = W * 0.5;
+  const cy = H * 0.5;
+  const rot = time * 0.00025;
+  const amp = 1 + flash * 0.8;
+  bg.lineStyle(2 + beat * 4, th.frame, (0.1 + beat * 0.14) * amp);
+  for (let i = 0; i < 24; i += 1) {
+    const a = rot + (i / 24) * Math.PI * 2;
+    bg.lineBetween(cx, cy, cx + Math.cos(a) * 640, cy + Math.sin(a) * 640);
+  }
+  bg.fillStyle(th.glow, 0.18 * amp);
+  bg.fillCircle(cx, cy, 60 + beat * 30);
+}
+
+function fxTunnel(bg, th, time, beat, flash) {
+  const cx = W * 0.5;
+  const cy = H * 0.5;
+  const t = time * 0.0015;
+  const amp = 1 + flash * 0.9;
+  for (let i = 0; i < 8; i += 1) {
+    const p = (t + i / 8) % 1;
+    const r = p * 520;
+    bg.lineStyle(2 + beat * 3, i & 1 ? th.frame : th.band[1], (1 - p) * 0.22 * amp);
+    bg.strokeEllipse(cx, cy, r * 1.6, r);
+  }
+  bg.fillStyle(th.dust, 0.15 + beat * 0.2);
+  bg.fillCircle(cx, cy, 14 + beat * 18);
+}
+
 function soloBg(s, th, lv, time) {
   const bg = s.bg;
   const glow = s.glow;
-  const k = time * 0.001;
-  const p = s.pulse;
   const bp = s.beatPhase;
+  const fl = Math.min(1, s.flash);
 
   bg.fillStyle(th.bg, 1);
   bg.fillRect(0, 0, W, H);
 
-  if (!th.k) {
-    for (let i = 0; i < 4; i += 1) {
-      const y = 72 + i * 118 + Math.sin(k * 1.7 + i) * 12;
-      bg.fillStyle(th.band[i & 1], 0.1 + p * 0.04 + bp * 0.05);
-      bg.fillRect(-20, y, W + 40, 54);
-    }
-    for (let i = 0; i < 5; i += 1) {
-      const r = (time * 0.08 + i * 120) % 520;
-      glow.lineStyle(2, th.frame, 0.035 + p * 0.05);
-      glow.strokeCircle(W / 2, H / 2, r);
-    }
-    glow.fillStyle(th.glow, 0.06 + p * 0.03);
-    glow.fillCircle(120 + Math.sin(k) * 36, 420, 110);
-    glow.fillCircle(678 + Math.cos(k * 0.7) * 28, 160, 86);
-  } else if (th.k === 1) {
-    for (let i = 0; i < 7; i += 1) {
-      const x = 80 + i * 96 + Math.sin(k * 0.8 + i) * 10;
-      const y = 120 + (i & 1 ? 70 : 0);
-      glow.fillStyle(th.glow, 0.04 + p * 0.02 + bp * 0.03);
-      glow.fillCircle(x, y + i * 30, 90 + i * 4);
-    }
-    for (let i = 0; i < 5; i += 1) {
-      const y = 90 + i * 110;
-      bg.fillStyle(th.band[0], 0.04);
-      bg.fillRect(0, y, W, 80);
-    }
-  } else if (th.k === 2) {
-    for (let i = 0; i < 4; i += 1) {
-      const r = (time * 0.1 + i * 130) % 480;
-      glow.lineStyle(3, th.frame, 0.04 + bp * 0.04);
-      glow.strokeCircle(W / 2, H / 2, r);
-    }
-    for (let i = 0; i < 3; i += 1) {
-      const y = 110 + i * 140;
-      bg.fillStyle(th.band[0], 0.06 + bp * 0.03);
-      bg.fillRect(0, y, W, 70);
-    }
-    glow.fillStyle(th.glow, 0.08 + p * 0.03);
-    glow.fillCircle(140 + Math.sin(k) * 40, 380, 120);
-    glow.fillCircle(660 + Math.cos(k * 0.9) * 36, 180, 90);
-  } else {
-    for (let i = 0; i < 6; i += 1) {
-      const y = 60 + i * 92;
-      bg.fillStyle(th.band[1], 0.04 + bp * 0.05 + i * 0.005);
-      bg.fillRect(0, y, W, 48);
-    }
-    for (const x of [80, 720]) {
-      for (let i = 0; i < 4; i += 1) {
-        glow.lineStyle(4, th.side, 0.1 + bp * 0.06);
-        glow.strokeCircle(x, 140 + i * 100, 30);
-      }
-    }
-    glow.fillStyle(th.glow, 0.1 + p * 0.04);
-    glow.fillRect(284, 106, 232, 400);
-  }
+  if (!th.k) fxPlasma(bg, th, time, bp, fl);
+  else if (th.k === 1) fxCopper(bg, th, time, bp, fl);
+  else if (th.k === 2) fxSunburst(bg, th, time, bp, fl);
+  else fxTunnel(bg, th, time, bp, fl);
 
   for (const d of s.dust) {
-    glow.fillStyle(th.dust, 0.03 + d.s * 0.02 + p * 0.01);
+    glow.fillStyle(th.dust, 0.03 + d.s * 0.02 + s.pulse * 0.01);
     glow.fillCircle(d.x, d.y, d.s + th.k * 0.4);
   }
 }
@@ -940,7 +994,6 @@ function draw(s, time) {
   const glow = s.glow;
   const fg = s.fg;
   const pulse = s.pulse;
-  const k = time * 0.001;
   const solo = s.mode === 1 && s.boards[0];
   const th = solo ? theme(s.boards[0].lv) : 0;
 
@@ -951,30 +1004,15 @@ function draw(s, time) {
   if (th) {
     soloBg(s, th, s.boards[0].lv, time);
   } else {
-    bg.fillStyle(0x050816, 1);
-    bg.fillRect(0, 0, W, H);
-    for (let i = 0; i < 4; i += 1) {
-      const y = 70 + i * 128 + Math.sin(k * 1.6 + i) * 36;
-      bg.fillStyle(PAL[i % 3], 0.035 + i * 0.01 + pulse * 0.02 + s.beatPhase * 0.03);
-      bg.fillRect(-20, y, W + 40, 56);
-    }
-    glow.fillStyle(PAL[1], 0.03 + pulse * 0.02);
-    glow.fillCircle(120 + Math.sin(k) * 40, 110, 90);
-    glow.fillStyle(PAL[0], 0.025 + pulse * 0.02);
-    glow.fillCircle(700 + Math.cos(k * 0.8) * 36, 510, 120);
-    for (let i = 0; i < 4; i += 1) {
-      const r = (time * 0.08 + i * 120) % 520;
-      glow.lineStyle(2, PAL[i % 3], 0.03 + pulse * 0.03);
-      glow.strokeCircle(W / 2, H / 2, r);
-    }
-    for (const d of s.dust) {
-      glow.fillStyle(0xffffff, 0.04 + d.s * 0.02);
-      glow.fillCircle(d.x, d.y, d.s);
-    }
+    const vl = mxl(s);
+    soloBg(s, theme(vl), vl, time);
   }
 
   for (const tr of s.trails) {
-    if (tr.beam) {
+    if (tr.amb) {
+      glow.fillStyle(tr.c, tr.a * 0.6);
+      glow.fillCircle(tr.x, tr.y, tr.r);
+    } else if (tr.beam) {
       glow.fillStyle(tr.e || tr.c, tr.a * 0.12);
       glow.fillRect(tr.x - tr.w * 2.4, tr.y, tr.w * 4.8, tr.h);
       glow.fillStyle(tr.c, tr.a * 0.2);
@@ -1036,7 +1074,11 @@ function draw(s, time) {
   }
 
   if (s.flash > 0) {
-    glow.fillStyle(0xffffff, s.flash * 0.18);
+    if (s.flashC) {
+      glow.fillStyle(s.flashC, Math.min(0.35, s.flash * 0.28));
+      glow.fillRect(0, 0, W, H);
+    }
+    glow.fillStyle(0xffffff, Math.min(0.55, s.flash * 0.32));
     glow.fillRect(0, 0, W, H);
   }
 }
@@ -1065,7 +1107,7 @@ function drawBoard(s, b, th) {
     glow.fillRect(x - 8, y + h + 4, w + 16, 8);
     fg.fillStyle(0x000000, 0.9);
     fg.fillRect(x, y, w, h);
-    fg.lineStyle(3, th.frame, 0.95);
+    fg.lineStyle(3, th.frame, 0.75 + s.beatPhase * 0.18);
     fg.lineBetween(x, y, x, y + h);
     fg.lineBetween(x + w, y, x + w, y + h);
     fg.lineBetween(x, y + h, x + w, y + h);
@@ -1074,7 +1116,7 @@ function drawBoard(s, b, th) {
     glow.fillRect(x - 10, y - 10, w + 20, h + 20);
     fg.fillStyle(0x08101f, 0.92);
     fg.fillRect(x, y, w, h);
-    fg.lineStyle(2, 0x87d7ff, 0.28 + b.flash * 0.25);
+    fg.lineStyle(2, 0x87d7ff, 0.28 + b.flash * 0.25 + s.beatPhase * 0.12);
     fg.strokeRect(x - 1, y - 1, w + 2, h + 2);
   }
 
@@ -1097,7 +1139,7 @@ function drawBoard(s, b, th) {
   }
 
   if (b.flash > 0) {
-    glow.fillStyle(0xffffff, b.flash * 0.12);
+    glow.fillStyle(0xffffff, b.flash * 0.3);
     glow.fillRect(x, y, w, h);
   }
 
@@ -1125,6 +1167,10 @@ function piece(s, b, id, r, px, py, a, ghost, th) {
       s.fg.lineStyle(1, tint(th, id), 0.25 * a);
       s.fg.strokeRect(x + 4, gy + 4, b.c - 8, b.c - 8);
     } else {
+      if (a >= 1) {
+        s.glow.fillStyle(tint(th, id), 0.08 + s.beatPhase * 0.14);
+        s.glow.fillCircle(x + b.c * 0.5, gy + b.c * 0.5, b.c * 1.9);
+      }
       block(s, x, gy, b.c, tint(th, id), a, 0, th);
     }
   }
@@ -1255,10 +1301,15 @@ function stepFx(s, time, delta) {
   }
   for (let i = s.trails.length - 1; i >= 0; i -= 1) {
     const t = s.trails[i];
+    if (t.amb) {
+      t.x += t.vx * delta * 0.001;
+      t.y += t.vy * delta * 0.001;
+    }
     t.a -= delta / t.l;
     if (t.a <= 0) s.trails.splice(i, 1);
   }
-  s.flash = Math.max(0, s.flash - delta * 0.0012);
+  s.flash = Math.max(0, s.flash - delta * 0.0009);
+  if (s.flash <= 0) s.flashC = 0;
   s.pulse = Math.max(0.05, s.pulse - delta * 0.0005);
   for (const b of s.boards) b.flash = Math.max(0, b.flash - delta * 0.003);
 }
@@ -1358,6 +1409,36 @@ function ctx(s) {
       f.connect(c.destination);
       s._filter = f;
     }
+    if (!s._mgain) {
+      const mf = c.createBiquadFilter();
+      mf.type = 'lowpass';
+      mf.frequency.value = 2400;
+      mf.Q.value = 0.8;
+      const mg = c.createGain();
+      mg.gain.value = 0;
+      mf.connect(mg);
+      mg.connect(c.destination);
+      const sr = c.sampleRate;
+      const len = (sr * 0.9) | 0;
+      const ir = c.createBuffer(2, len, sr);
+      for (let ch = 0; ch < 2; ch += 1) {
+        const d = ir.getChannelData(ch);
+        for (let i = 0; i < len; i += 1) {
+          const tt = i / len;
+          d[i] = (Math.random() * 2 - 1) * Math.pow(1 - tt, 3);
+        }
+      }
+      const conv = c.createConvolver();
+      conv.buffer = ir;
+      const wet = c.createGain();
+      wet.gain.value = 0.35;
+      mf.connect(conv);
+      conv.connect(wet);
+      wet.connect(c.destination);
+      s._mfilter = mf;
+      s._mgain = mg;
+      s._wet = wet;
+    }
     return c;
   } catch {
     return null;
@@ -1423,6 +1504,12 @@ function kickDrum(s, c, from, to, dur, vol, delay) {
 function snd(s, id) {
   const c = ctx(s);
   if (!c) return;
+  if (id === 'c1' || id === 'c2' || id === 'c3' || id === 'c4') {
+    const r = s.music ? MP[s.music.idx][0] : 45;
+    const off = [0, 5, 7, 12][id.charCodeAt(1) - 49];
+    const fc = 440 * Math.pow(2, (r + off - 57) / 12);
+    tone(s, c, fc, fc, 0.4, 0.05, 'triangle', 0.04);
+  }
   if (id === 'move') tone(s, c, 760, 540, 0.045, 0.025, 'square');
   else if (id === 'rot') tone(s, c, 980, 720, 0.06, 0.03, 'triangle');
   else if (id === 'fast') {
@@ -1484,28 +1571,220 @@ function snd(s, id) {
   else if (id === 'start') tone(s, c, 320, 960, 0.2, 0.04, 'square');
 }
 
-const MUSIC_SCALE = [220, 277.18, 329.63, 392, 440, 523.25, 659.25, 880];
-const MUSIC_BASS = [55, 55, 82.41, 65.41];
-const MUSIC_PAT = [0, 4, 2, 5, 7, 4, 2, 6, 0, 4, 2, 5, 3, 2, 4, 7];
+const MP = [
+  [33, 120, 0x1111, 0x0421, 0x2222, 1800, 2],
+  [33, 128, 0x1111, 0x1248, 0x2222, 2000, 2],
+  [35, 136, 0x1111, 0x2424, 0x4444, 2200, 2],
+  [36, 144, 0x1115, 0x1248, 0x2222, 2400, 1],
+  [38, 152, 0x1111, 0x4242, 0xA2A2, 2600, 1],
+  [36, 160, 0x1113, 0x5555, 0xA5A5, 2800, 1],
+  [33, 168, 0x1515, 0x2929, 0xA5A5, 3000, 3],
+  [38, 176, 0x1555, 0x5A5A, 0xAAAA, 3200, 3],
+  [40, 184, 0x1555, 0x5AAA, 0xAAAA, 3400, 2],
+  [33, 192, 0x1555, 0xAAAA, 0xAAAA, 3600, 3],
+  [45, 200, 0x1555, 0xAAAA, 0xAAAA, 3800, 3],
+  [36, 210, 0x1DDD, 0x5555, 0xAAAA, 4200, 3],
+  [33, 220, 0x1DDD, 0xFFFF, 0xAAAA, 4800, 3],
+];
+const MW = ['sine', 'triangle', 'sawtooth', 'square'];
 
-function playMusic(s) {
-  if (s.phase !== 'play') return;
-  const c = ctx(s);
-  if (!c) return;
-  const step = s.musicStep;
-  s.musicStep = (step + 1) & 31;
-  const bar = (step >> 4) & 3;
-  if ((step & 3) === 0) {
-    const bf = MUSIC_BASS[bar];
-    tone(s, c, bf, bf, 0.28, 0.028, 'sawtooth');
-    tone(s, c, bf * 2, bf * 2, 0.22, 0.012, 'triangle', 0.01);
-  }
-  const n = MUSIC_PAT[step & 15];
-  const f = MUSIC_SCALE[n];
-  const oct = (step & 7) === 3 ? 2 : 1;
-  tone(s, c, f * oct, f * oct, 0.16, 0.018, 'triangle');
-  if ((step & 7) === 6) tone(s, c, f * 2, f * 2, 0.1, 0.01, 'sine', 0.04);
+function mxl(s) {
+  let m = 1;
+  for (const b of s.boards) if (b.lv > m) m = b.lv;
+  return m;
 }
+
+function padSpawn(s, c, P) {
+  const f = 440 * Math.pow(2, (P[0] - 69) / 12);
+  const lv = mxl(s);
+  const w = lv < 5 ? 'sine' : lv < 10 ? 'triangle' : 'sawtooth';
+  const t = c.currentTime;
+  const voices = [];
+  for (const mult of [0.5, 0.75]) {
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = w;
+    o.frequency.value = f * mult;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.06, t + 1.2);
+    o.connect(g);
+    g.connect(s._mfilter);
+    o.start(t);
+    voices.push({ o, g });
+  }
+  s._pad = voices;
+}
+
+function padKill(s, c) {
+  if (!s._pad) return;
+  const t = c.currentTime;
+  for (const v of s._pad) {
+    try {
+      v.g.gain.cancelScheduledValues(t);
+      v.g.gain.setValueAtTime(v.g.gain.value, t);
+      v.g.gain.linearRampToValueAtTime(0, t + 0.4);
+      v.o.stop(t + 0.45);
+    } catch {}
+  }
+  s._pad = 0;
+}
+
+function swell(s) {
+  const c = ctx(s);
+  if (!c || !s._mfilter || !s.music) return;
+  const hz = MP[s.music.idx][5];
+  const f = s._mfilter.frequency;
+  const t = c.currentTime;
+  f.cancelScheduledValues(t);
+  f.setValueAtTime(hz, t);
+  f.linearRampToValueAtTime(hz * 1.6, t + 0.2);
+  f.linearRampToValueAtTime(hz, t + 1.4);
+}
+
+function ambient(s, lv, dt) {
+  if (!s.scale || Math.random() > (0.002 + lv * 0.0005) * dt) return;
+  const th = theme(lv);
+  const w = s.scale.width;
+  const h = s.scale.height;
+  const fast = lv >= 10;
+  const drift = lv >= 4 && lv < 10;
+  s.trails.push({
+    amb: 1,
+    x: Math.random() * w,
+    y: fast ? -20 : h + 20,
+    vx: drift ? (Math.random() * 40 - 20) : 0,
+    vy: fast ? 220 + Math.random() * 140 : -(30 + Math.random() * 40),
+    l: fast ? 1800 : 3600,
+    a: 0.35,
+    c: th.dust,
+    r: fast ? 2 : 1.5,
+  });
+}
+
+function mStep(s, c, P, st) {
+  const f = 440 * Math.pow(2, (P[0] - 69) / 12);
+  const bit = 1 << st;
+  const save = s._filter;
+  s._filter = s._mfilter;
+  if (!(st & 3)) {
+    kickDrum(s, c, 140, 48, 0.14, 0.18);
+    s.beatPhase = 1;
+    if (s._mgain && s.music) {
+      const g = s._mgain.gain;
+      const t = c.currentTime;
+      const v = s.music.vol;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(v * 0.35, t + 0.015);
+      g.linearRampToValueAtTime(v, t + 0.11);
+    }
+    if (s.scale) {
+      const th = theme(mxl(s));
+      ring(s, s.scale.width * 0.5, s.scale.height * 0.5, th.frame, 40, 180, 2);
+    }
+  }
+  if (P[2] & bit) tone(s, c, f / 2, f / 2, 0.18, 0.14, MW[P[6]]);
+  if (P[3] & bit) {
+    const n = [0, 3, 5, 7, 10][(st * (3 + (P[0] & 3))) % 5] + 12;
+    const f2 = f * Math.pow(2, n / 12);
+    tone(s, c, f2, f2, 0.22, 0.08, 'triangle');
+  }
+  if (P[4] & bit) noise(s, c, 0.025, 0.04, 5000);
+  s._filter = save;
+}
+
+function mDip(s, c, idx) {
+  const g = s._mgain.gain;
+  const t = c.currentTime;
+  const v = s.music.vol;
+  g.cancelScheduledValues(t);
+  g.setValueAtTime(g.value, t);
+  g.linearRampToValueAtTime(0.0001, t + 0.1);
+  g.linearRampToValueAtTime(v, t + 0.2);
+  padKill(s, c);
+  setTimeout(() => {
+    if (!s.music) return;
+    s.music.idx = idx;
+    s.music.step = 0;
+    s.music.acc = 0;
+    const mf = s._mfilter;
+    const tt = c.currentTime;
+    mf.frequency.cancelScheduledValues(tt);
+    mf.frequency.linearRampToValueAtTime(MP[idx][5], tt + 0.3);
+    if (s._wet) {
+      const w = 0.35 - Math.min(idx, 12) * 0.019;
+      s._wet.gain.cancelScheduledValues(tt);
+      s._wet.gain.linearRampToValueAtTime(w, tt + 0.4);
+    }
+    padSpawn(s, c, MP[idx]);
+  }, 95);
+}
+
+const Music = {
+  initAudio(s) { ctx(s); },
+  startLevelMusic(s, lv) {
+    const c = ctx(s);
+    if (!c) return;
+    const idx = ((lv - 1) % 13 + 13) % 13;
+    const t = c.currentTime;
+    if (!s.music) {
+      s.music = { on: 1, idx, step: 0, acc: 0, vol: 0.85, muted: 0 };
+      s._mfilter.frequency.value = MP[idx][5];
+      s._mgain.gain.cancelScheduledValues(t);
+      s._mgain.gain.linearRampToValueAtTime(0.85, t + 0.25);
+      if (s._wet) s._wet.gain.value = 0.35 - Math.min(idx, 12) * 0.019;
+      padSpawn(s, c, MP[idx]);
+    } else {
+      s.music.on = 1;
+      if (s.music.idx !== idx) mDip(s, c, idx);
+      else {
+        s._mgain.gain.cancelScheduledValues(t);
+        s._mgain.gain.linearRampToValueAtTime(s.music.vol, t + 0.2);
+      }
+    }
+  },
+  stopMusic(s) {
+    if (!s.music) return;
+    s.music.on = 0;
+    if (s._mgain) {
+      const c = ctx(s);
+      const g = s._mgain.gain;
+      const t = c.currentTime;
+      g.cancelScheduledValues(t);
+      g.linearRampToValueAtTime(0, t + 0.2);
+      padKill(s, c);
+    }
+  },
+  setMuted(s, b) {
+    if (!s.music) return;
+    s.music.muted = b ? 1 : 0;
+    if (s._mgain) s._mgain.gain.value = b ? 0 : s.music.vol;
+  },
+  setVolume(s, v) {
+    if (!s.music) return;
+    s.music.vol = v;
+    if (s._mgain && !s.music.muted) {
+      const c = ctx(s);
+      const g = s._mgain.gain;
+      const t = c.currentTime;
+      g.cancelScheduledValues(t);
+      g.linearRampToValueAtTime(v, t + 0.15);
+    }
+  },
+  tick(s, dt) {
+    const M = s.music;
+    if (!M || !M.on) return;
+    const c = ctx(s);
+    if (!c) return;
+    M.acc += dt / 1000;
+    const P = MP[M.idx];
+    const d = 15 / P[1];
+    while (M.acc >= d) {
+      M.acc -= d;
+      mStep(s, c, P, M.step);
+      M.step = (M.step + 1) & 15;
+    }
+  },
+};
 
 function store() {
   if (window.platanusArcadeStorage) return window.platanusArcadeStorage;
