@@ -831,12 +831,16 @@ function clearFx(s, b, x, y, n, c, rows) {
   s.flash += n === 4 ? 0.85 : 0.48;
   s.flashC = c;
   s.pulse += n === 4 ? 1.8 : 0.8;
+  s.warpT = n === 4 ? 500 : 350;
+  if (n >= 2) ring(s, W * 0.5, H * 0.5, c, n === 4 ? 180 : 130, n === 4 ? 1100 : 800, n === 4 ? 8 : 5);
+  if (n === 4) s.swapT = 400;
   s.cameras.main.shake(n === 4 ? 360 : 200, n === 4 ? 0.014 : 0.008);
   if (n >= 2) swell(s);
   const cam = s.cameras.main;
   const zm = n === 4 ? 1.04 : 1.02;
+  s.zmBusy = 1;
   cam.zoomTo(zm, 120);
-  s.time.delayedCall(140, () => cam.zoomTo(1, 260));
+  s.time.delayedCall(140, () => { cam.zoomTo(1, 260); s.zmBusy = 0; });
   snd(s, `c${n}`);
 }
 
