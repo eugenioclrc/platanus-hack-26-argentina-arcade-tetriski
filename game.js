@@ -1698,6 +1698,13 @@ function mChord(s, c, P) {
   }
 }
 
+function mArp(s, c, P, st) {
+  const pat = [0, 7, 12, 7];
+  const semi = pat[st & 3] + 24;
+  const f = 440 * Math.pow(2, (P[0] - 69 + semi) / 12);
+  tone(s, c, f, f, 0.08, 0.04, 'triangle');
+}
+
 function mStep(s, c, P, st) {
   const f = 440 * Math.pow(2, (P[0] - 69) / 12);
   const bit = 1 << st;
