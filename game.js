@@ -215,6 +215,11 @@ function create() {
   s.beatAt = 0;
   s.beatFlip = 0;
   s.beatPhase = 0;
+  s.beatStrong = 0;
+  s.warpT = 0;
+  s.swapT = 0;
+  s.barStep = 0;
+  s.zmBusy = 0;
   s.lastBeat = 0;
   s.particles = [];
   s.rings = [];
@@ -1311,6 +1316,9 @@ function stepFx(s, time, delta) {
   s.flash = Math.max(0, s.flash - delta * 0.0009);
   if (s.flash <= 0) s.flashC = 0;
   s.pulse = Math.max(0.05, s.pulse - delta * 0.0005);
+  s.beatStrong = Math.max(0, s.beatStrong - delta * 0.0025);
+  s.warpT = Math.max(0, s.warpT - delta);
+  s.swapT = Math.max(0, s.swapT - delta);
   for (const b of s.boards) b.flash = Math.max(0, b.flash - delta * 0.003);
 }
 
