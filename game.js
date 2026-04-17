@@ -381,10 +381,35 @@ function makeBoard(x, y, c, name, keys) {
     hole: x < W / 2 ? 1 : 6,
     mdir: 0, mtime: 0, mfirst: 0,
     flash: 0, dead: 0,
+    conT: 0,
   };
 }
 
+function contagion(b) {
+  const s2 = b.a.map(r => r.slice());
+  for (let y = VO; y < BH; y += 1) {
+    for (let x = 0; x < BW; x += 1) {
+      const v = s2[y][x];
+      if (!v || v === 8) continue;
+      if (Math.random() > 0.18) continue;
+      const d = (Math.random() * 4) | 0;
+      const nx = x + (d === 0 ? 1 : d === 1 ? -1 : 0);
+      const ny = y + (d === 2 ? 1 : d === 3 ? -1 : 0);
+      if (nx < 0 || nx >= BW || ny < VO || ny >= BH) continue;
+      const nv = s2[ny][nx];
+      if (nv && nv !== 8 && nv !== v) b.a[y][x] = nv;
+    }
+  }
+}
+
 function tickBoard(s, b, time, delta) {
+  if (!b.dead) {
+    b.conT += delta;
+    if (b.conT > 700) {
+      b.conT = 0;
+      contagion(b);
+    }
+  }
   if (!b.p || b.dead) return;
 
   if (b.comboT > 0) {
