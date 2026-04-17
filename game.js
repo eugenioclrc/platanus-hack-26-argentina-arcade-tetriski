@@ -357,7 +357,7 @@ function startGame(s, mode) {
     spawn(s, b, 1);
   }
   snd(s, 'start');
-  if (s.music) s.music.vol = 0.85;
+  if (s.music) s.music.vol = 1;
   Music.initAudio(s);
   Music.startLevelMusic(s, 1);
 }
@@ -766,6 +766,15 @@ function lose(s, b) {
     s.over1.setText(`${winner.name} WINS`);
     s.over2.setText(`LINES ${s.boards[0].lines} : ${s.boards[1].lines}\nSTART REMATCH   BTN MENU`);
   }
+  s.time.delayedCall(5000, () => {
+    if (s.phase !== 'over') return;
+    s.phase = 'menu';
+    s.boards = [];
+    s.bpm = 120;
+    s.over1.setText('');
+    s.over2.setText('');
+    Music.stopMusic(s);
+  });
 }
 
 function clearFx(s, b, x, y, n, c, rows) {
@@ -837,7 +846,7 @@ function clearFx(s, b, x, y, n, c, rows) {
   s.cameras.main.shake(n === 4 ? 360 : 200, n === 4 ? 0.014 : 0.008);
   if (n >= 2) swell(s);
   const cam = s.cameras.main;
-  const zm = n === 4 ? 1.04 : 1.02;
+  const zm = n === 4 ? 1.02 : 1.01;
   s.zmBusy = 1;
   cam.zoomTo(zm, 120);
   s.time.delayedCall(140, () => { cam.zoomTo(1, 260); s.zmBusy = 0; });
@@ -1732,7 +1741,7 @@ function mStep(s, c, P, st) {
     if (!s.zmBusy) {
       const cam = s.cameras.main;
       s.zmBusy = 1;
-      cam.zoomTo(1.015, 80);
+      cam.zoomTo(1.006, 80);
       s.time.delayedCall(100, () => { cam.zoomTo(1, 220); s.zmBusy = 0; });
     }
     if (lv >= 4) mSub(s, c, P);
@@ -1785,7 +1794,7 @@ const Music = {
     const idx = ((lv - 1) % 13 + 13) % 13;
     const t = c.currentTime;
     if (!s.music) {
-      s.music = { on: 1, idx, step: 0, acc: 0, vol: 0.85, muted: 0 };
+      s.music = { on: 1, idx, step: 0, acc: 0, vol: 1, muted: 0 };
       s._mfilter.frequency.value = MP[idx][5];
       s._mgain.gain.cancelScheduledValues(t);
       s._mgain.gain.linearRampToValueAtTime(0.85, t + 0.25);
