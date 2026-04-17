@@ -1685,6 +1685,11 @@ function mSnare(s, c) {
   noise(s, c, 0.06, 0.05, 3500);
 }
 
+function mSub(s, c, P) {
+  const f = 440 * Math.pow(2, (P[0] - 69 - 12) / 12);
+  tone(s, c, f, f, 0.14, 0.09, 'sine');
+}
+
 function mStep(s, c, P, st) {
   const f = 440 * Math.pow(2, (P[0] - 69) / 12);
   const bit = 1 << st;
