@@ -1686,9 +1686,13 @@ function mStep(s, c, P, st) {
   const bit = 1 << st;
   const save = s._filter;
   s._filter = s._mfilter;
-  if (!(st & 3)) {
+  if (st === 0) s.barStep = (s.barStep + 1) & 31;
+  const lv = mxl(s);
+  const brk = lv >= 10 && (s.barStep & 7) === 7;
+  if (!(st & 3) && !brk) {
     kickDrum(s, c, 140, 48, 0.14, 0.18);
     s.beatPhase = 1;
+    s.beatStrong = 1;
     if (s._mgain && s.music) {
       const g = s._mgain.gain;
       const t = c.currentTime;
@@ -1698,15 +1702,25 @@ function mStep(s, c, P, st) {
       g.linearRampToValueAtTime(v, t + 0.11);
     }
     if (s.scale) {
-      const th = theme(mxl(s));
+      const th = theme(lv);
       ring(s, s.scale.width * 0.5, s.scale.height * 0.5, th.frame, 40, 180, 2);
     }
+    if (!s.zmBusy) {
+      const cam = s.cameras.main;
+      s.zmBusy = 1;
+      cam.zoomTo(1.015, 80);
+      s.time.delayedCall(100, () => { cam.zoomTo(1, 220); s.zmBusy = 0; });
+    }
+    if (lv >= 4) mSub(s, c, P);
   }
+  if (lv >= 4 && (st === 4 || st === 12)) mSnare(s, c);
+  if (lv >= 7 && (st === 0 || st === 8)) mChord(s, c, P);
   if (P[2] & bit) tone(s, c, f / 2, f / 2, 0.18, 0.14, MW[P[6]]);
   if (P[3] & bit) {
     const n = [0, 3, 5, 7, 10][(st * (3 + (P[0] & 3))) % 5] + 12;
     const f2 = f * Math.pow(2, n / 12);
     tone(s, c, f2, f2, 0.22, 0.08, 'triangle');
+    if (lv >= 7) mArp(s, c, P, st);
   }
   if (P[4] & bit) noise(s, c, 0.025, 0.04, 5000);
   s._filter = save;
